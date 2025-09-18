@@ -27,7 +27,7 @@
 
     .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:10px}
     .dow{color:var(--muted);text-align:center;padding:2px 0}
-    .cell{background:var(--card);border:1px solid var(--line);border-radius:12px;min-height:134px;display:flex;flex-direction:column;overflow:hidden}
+    .cell{background:var(--card);border:1px solid var(--line);border-radius:12px;min-height:150px;display:flex;flex-direction:column;overflow:hidden}
     .cell-head{display:flex;justify-content:space-between;align-items:center;gap:8px;background:transparent;border-bottom:1px solid var(--line);padding:6px 8px}
     .date{font-weight:700;font-size:clamp(12px,1.8vw,14px)}
     .today{outline:2px solid var(--accent);border-radius:8px}
@@ -39,12 +39,13 @@
 
     /* Chart area */
     #chartWrap{display:none;margin-top:10px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:8px}
-    #chartControls{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px;align-items:center}
+    #chartControls{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;align-items:center}
+    #chartControls label{display:inline-flex;gap:6px;align-items:center}
     #chartInfo{color:var(--muted);font-size:clamp(10px,1.6vw,12px);margin-top:6px}
     canvas{width:100%;max-width:100%;height:400px;border-radius:10px;background:#0f1218;border:1px solid #1b2130}
 
     @media (max-width:720px){
-      .cell{min-height:128px}
+      .cell{min-height:144px}
       .content{gap:2px}
       .field input{height:30px}
       canvas{height:320px}
@@ -54,15 +55,24 @@
 <body>
   <div class="wrap">
     <div class="appbar">
-      <h1>Weight & Health Monthly Tracker</h1>
+      <h1 id="title">Weight & Health Monthly Tracker</h1>
       <div class="controls">
         <button id="prevBtn" title="Previous month">◀</button>
         <input id="monthPicker" type="month" />
         <button id="nextBtn" title="Next month">▶</button>
         <button id="todayBtn">Today</button>
         <button id="exportBtn">Export Month JSON</button>
+        <button id="importBtn">Import JSON</button>
+        <input id="importFile" type="file" accept="application/json" style="display:none" />
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
-          <input id="autoSaveToggle" type="checkbox" checked /> Auto‑save
+          <input id="autoSaveToggle" type="checkbox" checked /> <span id="autosaveLabel">Auto‑save</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+          <span id="langLabel">Language</span>
+          <select id="langSel">
+            <option value="en">English</option>
+            <option value="zh">中文</option>
+          </select>
         </label>
       </div>
     </div>
@@ -74,35 +84,54 @@
 
     <!-- CALENDAR VIEW -->
     <section id="calendarWrap">
-      <div class="legend" style="color:var(--muted);font-size:clamp(10px,1.6vw,12px);margin-top:8px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-        <span style="display:inline-flex;align-items:center;gap:6px"><span class="dot" style="background:var(--series-weight)"></span> Weight line</span>
-        <span style="display:inline-flex;align-items:center;gap:6px"><span class="dot" style="background:var(--series-fat)"></span> Fat % line</span>
-        <span style="display:inline-flex;align-items:center;gap:6px"><span class="dot" style="background:var(--series-cal)"></span> Calories line</span>
-        <span style="display:inline-flex;align-items:center;gap:6px"><span class="dot" style="background:var(--blue)"></span> Sport: Aerobic bars</span>
-        <span style="display:inline-flex;align-items:center;gap:6px"><span class="dot" style="background:var(--red)"></span> Sport: Anaerobic bars</span>
-      </div>
       <div class="grid" id="dow"></div>
       <div class="grid" id="calendar"></div>
-      <div class="note" style="color:var(--muted);font-size:clamp(10px,1.6vw,12px);margin-top:6px">Tap a cell to edit. Data stays in your browser.</div>
+      <div class="note" id="noteText" style="color:var(--muted);font-size:clamp(10px,1.6vw,12px);margin-top:6px">Tap a cell to edit. Data stays in your browser.</div>
     </section>
 
     <!-- CHART VIEW -->
     <section id="chartWrap">
       <div id="chartControls">
-        <label><input type="checkbox" id="chkWeight" checked> Weight</label>
-        <label><input type="checkbox" id="chkFat" checked> Body fat %</label>
-        <label><input type="checkbox" id="chkCalories" checked> Calories</label>
-        <label><input type="checkbox" id="chkSport" checked> Sport time bars</label>
+        <label><input type="checkbox" id="chkWeight" checked><span id="lblWeight">Weight (line)</span></label>
+        <label><input type="checkbox" id="chkFat" checked><span id="lblFat">Body fat % (line)</span></label>
+        <label><input type="checkbox" id="chkCalories" checked><span id="lblCalories">Net calories (bars)</span></label>
+        <label><input type="checkbox" id="chkSport" checked><span id="lblSport">Sport time (bars)</span></label>
       </div>
       <canvas id="weightChart" width="1100" height="400" aria-label="Chart"></canvas>
-      <div id="chartInfo">Left axis: **Weight** auto-scales to your data (snapped to 5 kg; integer ticks only). Right inside: **Fat** 10–35%. Right outside: **Calories** (auto‑scaled). Bottom bars: **Sport time** — blue=aerobic, red=anaerobic; if both, bars are stacked.</div>
+      <div id="chartInfo">Left axis: Weight (auto‑snap to 5 kg, integer ticks). Right inside: Fat 10–35 %. Right outside: Net calories (auto). Bottom: Sport minutes (stacked: blue=aerobic, red=anaerobic).</div>
     </section>
   </div>
 
 <script>
 (function(){
+  // ====== I18N ======
+  const I18N = {
+    en: {
+      title: 'Weight & Health Monthly Tracker',
+      calendar: 'Calendar view', chart: 'Chart view', today: 'Today', export: 'Export Month JSON', import: 'Import JSON', autosave: 'Auto‑save', lang: 'Language',
+      note: 'Tap a cell to edit. Data stays in your browser.',
+      dow: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
+      ph: { kg:'kg', fat:'%', in:'kcal intake', out:'kcal burned', aer:'Aerobic (min)', ana:'Anaerobic (min)'},
+      toggles: {weight:'Weight (line)', fat:'Body fat % (line)', cal:'Net calories (bars)', sport:'Sport time (bars)'},
+      chartInfo:'Left axis: Weight (auto‑snap to 5 kg, integer ticks). Right inside: Fat 10–35 %. Right outside: Net calories (auto). Bottom: Sport minutes (stacked: blue=aerobic, red=anaerobic).',
+      importOk: (m,d)=>`Imported ${d} day(s) in ${m} month(s).`,
+      importFail: msg=>`Import failed: ${msg}`
+    },
+    zh: {
+      title: '体重与健康月度记录',
+      calendar: '日历视图', chart: '图表视图', today: '今天', export: '导出当月JSON', import: '导入JSON', autosave: '自动保存', lang: '语言',
+      note: '点日期即可编辑。数据仅保存在你的浏览器中。',
+      dow: ['日','一','二','三','四','五','六'],
+      ph: { kg:'公斤', fat:'体脂%', in:'摄入(千卡)', out:'消耗(千卡)', aer:'有氧(分钟)', ana:'无氧(分钟)'},
+      toggles: {weight:'体重（折线）', fat:'体脂％（折线）', cal:'净热量（柱状）', sport:'运动时长（柱状）'},
+      chartInfo:'左轴：体重（自动按 5kg 对齐，整数刻度）。右内：体脂 10–35%。右外：净热量（自动）。底部：运动分钟数（堆叠：蓝=有氧，红=无氧）。',
+      importOk: (m,d)=>`已导入 ${m} 个月、${d} 天的数据。`,
+      importFail: msg=>`导入失败：${msg}`
+    }
+  };
+
   // ====== DOM & CONSTANTS ======
-  const STORAGE_KEY = 'wm_tracker_v6';
+  const STORAGE_KEY = 'wm_tracker_v9';
   const $ = sel => document.querySelector(sel);
   const calendarEl = $('#calendar');
   const monthPicker = $('#monthPicker');
@@ -110,6 +139,8 @@
   const nextBtn = $('#nextBtn');
   const todayBtn = $('#todayBtn');
   const exportBtn = $('#exportBtn');
+  const importBtn = $('#importBtn');
+  const importFile = $('#importFile');
   const autoSaveToggle = $('#autoSaveToggle');
   const tabCalendar = $('#tabCalendar');
   const tabChart = $('#tabChart');
@@ -117,15 +148,23 @@
   const chartWrap = $('#chartWrap');
   const chartCanvas = $('#weightChart');
   const ctx = chartCanvas.getContext('2d');
-  const chkWeight = $('#chkWeight');
-  const chkFat = $('#chkFat');
-  const chkCalories = $('#chkCalories');
-  const chkSport = $('#chkSport');
+  const langSel = $('#langSel');
+  const titleEl = $('#title');
+  const autosaveLabel = $('#autosaveLabel');
+  const noteText = $('#noteText');
+  const lblWeight=$('#lblWeight'), lblFat=$('#lblFat'), lblCalories=$('#lblCalories'), lblSport=$('#lblSport');
+  const chkWeight=$('#chkWeight'), chkFat=$('#chkFat'), chkCalories=$('#chkCalories'), chkSport=$('#chkSport');
+
+  let CUR_LANG = localStorage.getItem('wm_lang') || 'en';
 
   // DOW header
-  const dowNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const dowEl = $('#dow');
-  dowNames.forEach(d => { const e=document.createElement('div'); e.className='dow'; e.textContent=d; dowEl.appendChild(e); });
+  function renderDOW(){
+    dowEl.innerHTML='';
+    (I18N[CUR_LANG].dow).forEach(d => {
+      const e=document.createElement('div'); e.className='dow'; e.textContent=d; dowEl.appendChild(e);
+    });
+  }
 
   // ====== HELPERS ======
   const pad2 = n => n.toString().padStart(2,'0');
@@ -158,10 +197,18 @@
       const date = new Date(year, month, day);
       const dateStr = ymd(date);
       const raw = monthData[dateStr] || {};
-      // Back-compat mapping from old {sport, sptime}
+      // Back-compat
       const backAer = raw.sport==='aer' ? (raw.sptime||'') : '';
       const backAna = raw.sport==='ana' ? (raw.sptime||'') : '';
-      const data = { weight: raw.weight||'', fat: raw.fat||'', cal: raw.cal||'', aerMin: raw.aerMin||backAer, anaMin: raw.anaMin||backAna };
+      const backCalIn = raw.cal ?? '';
+      const data = {
+        weight:  raw.weight||'',
+        fat:     raw.fat||'',
+        calIn:   raw.calIn||backCalIn||'',
+        calOut:  raw.calOut||'',
+        aerMin:  raw.aerMin||backAer,
+        anaMin:  raw.anaMin||backAna
+      };
 
       const cell = document.createElement('div'); cell.className = 'cell' + (dateStr===todayStr?' today':'');
       const head = document.createElement('div'); head.className='cell-head';
@@ -174,32 +221,36 @@
         if(!autoSaveToggle.checked) return;
         clearTimeout(t);
         t = setTimeout(()=>{
-          const payload = { weight: w.value, fat: f.value, cal: c.value, aerMin: aer.value, anaMin: ana.value };
+          const payload = { weight: w.value, fat: f.value, calIn: cin.value, calOut: cout.value, aerMin: aer.value, anaMin: ana.value };
           setDayData(dateStr, payload);
           window.dispatchEvent(new CustomEvent('wm:changed'));
         }, 160);
       };
 
-      // PHONE-FRIENDLY FIELDS (ONLY INPUTS)
+      // Inputs only (phone-friendly)
       const rowW = document.createElement('div'); rowW.className='field';
-      const w = document.createElement('input'); w.type='number'; w.step='0.1'; w.inputMode='decimal'; w.placeholder='kg'; w.value=data.weight; rowW.appendChild(w);
+      const w = document.createElement('input'); w.type='number'; w.step='0.1'; w.inputMode='decimal'; w.placeholder=I18N[CUR_LANG].ph.kg; w.value=data.weight; rowW.appendChild(w);
 
       const rowF = document.createElement('div'); rowF.className='field';
-      const f = document.createElement('input'); f.type='number'; f.step='0.1'; f.inputMode='decimal'; f.placeholder='%'; f.value=data.fat; rowF.appendChild(f);
+      const f = document.createElement('input'); f.type='number'; f.step='0.1'; f.inputMode='decimal'; f.placeholder=I18N[CUR_LANG].ph.fat; f.value=data.fat; rowF.appendChild(f);
 
-      const rowC = document.createElement('div'); rowC.className='field';
-      const c = document.createElement('input'); c.type='number'; c.step='1'; c.inputMode='numeric'; c.placeholder='kcal'; c.value=data.cal; rowC.appendChild(c);
+      const rowCin = document.createElement('div'); rowCin.className='field';
+      const cin = document.createElement('input'); cin.type='number'; cin.step='1'; cin.inputMode='numeric'; cin.placeholder=I18N[CUR_LANG].ph.in; cin.value=data.calIn; rowCin.appendChild(cin);
+
+      const rowCout = document.createElement('div'); rowCout.className='field';
+      const cout = document.createElement('input'); cout.type='number'; cout.step='1'; cout.inputMode='numeric'; cout.placeholder=I18N[CUR_LANG].ph.out; cout.value=data.calOut; rowCout.appendChild(cout);
 
       const rowAer = document.createElement('div'); rowAer.className='field';
-      const aer = document.createElement('input'); aer.type='number'; aer.step='1'; aer.inputMode='numeric'; aer.placeholder='Aerobic (min)'; aer.value=data.aerMin; rowAer.appendChild(aer);
+      const aer = document.createElement('input'); aer.type='number'; aer.step='1'; aer.inputMode='numeric'; aer.placeholder=I18N[CUR_LANG].ph.aer; aer.value=data.aerMin; rowAer.appendChild(aer);
 
       const rowAna = document.createElement('div'); rowAna.className='field';
-      const ana = document.createElement('input'); ana.type='number'; ana.step='1'; ana.inputMode='numeric'; ana.placeholder='Anaerobic (min)'; ana.value=data.anaMin; rowAna.appendChild(ana);
+      const ana = document.createElement('input'); ana.type='number'; ana.step='1'; ana.inputMode='numeric'; ana.placeholder=I18N[CUR_LANG].ph.ana; ana.value=data.anaMin; rowAna.appendChild(ana);
 
       // mount
       content.appendChild(rowW);
       content.appendChild(rowF);
-      content.appendChild(rowC);
+      content.appendChild(rowCin);
+      content.appendChild(rowCout);
       content.appendChild(rowAer);
       content.appendChild(rowAna);
       cell.appendChild(head); cell.appendChild(content); calendarEl.appendChild(cell);
@@ -207,127 +258,203 @@
       // tap to focus
       cell.addEventListener('click', (e)=>{ if(e.target.tagName!=='INPUT'){ focusFirstInput(content); } });
 
-      [w,f,c,aer,ana].forEach(el=>{ el.addEventListener('input', save); el.addEventListener('change', save); });
+      [w,f,cin,cout,aer,ana].forEach(el=>{ el.addEventListener('input', save); el.addEventListener('change', save); });
     }
   }
 
   // ====== CHART ======
   function dayCount(year,month){ return new Date(year, month+1, 0).getDate(); }
+  function niceStep(range){
+    const pow = Math.pow(10, Math.floor(Math.log10(Math.max(1, range))));
+    const candidates = [1,2,5,10];
+    let best = pow;
+    for(const c of candidates){ if(range/ (c*pow) <= 8){ best = c*pow; break; } }
+    return best;
+  }
   function getSeries(year, month){
     const md = getMonthData(year, month); const days = dayCount(year, month);
-    const F_MIN=10, F_MAX=35; // fat stays fixed
+    const F_MIN=10, F_MAX=35;
 
-    const wPts=[], fPts=[], calPts=[], aBars=[], nBars=[]; // sport split into two bar sets
-    const weights=[]; let maxSport=0;
+    const wPts=[], fPts=[], netBars=[], aBars=[], nBars=[]; // weight line, fat line, net calories bars, sport bars
+    const weights=[]; let minNet=Infinity, maxNet=-Infinity, maxSport=0;
     for(let d=1; d<=days; d++){
       const key = `${year}-${pad2(month+1)}-${pad2(d)}`; const rec = md[key]; if(!rec) continue;
       const w = parseFloat(rec.weight); if(!Number.isNaN(w)){ wPts.push({x:d, y:w}); weights.push(w); }
-      const f = parseFloat(rec.fat);    if(!Number.isNaN(f)) fPts.push({x:d, y:Math.max(10, Math.min(35, f))});
-      const c = parseFloat(rec.cal);    if(!Number.isNaN(c)) calPts.push({x:d, y:Math.max(0, c)});
+      const f = parseFloat(rec.fat);    if(!Number.isNaN(f)) fPts.push({x:d, y:Math.max(F_MIN, Math.min(F_MAX, f))});
+      const cin = parseFloat(rec.calIn); const cout = parseFloat(rec.calOut);
+      const net = (Number.isNaN(cin)?0:cin) - (Number.isNaN(cout)?0:cout);
+      if(!Number.isNaN(net) && (cin||cout)) { netBars.push({x:d, v:net}); minNet=Math.min(minNet, net); maxNet=Math.max(maxNet, net); }
 
-      // read both minutes, including back-compat from old {sport, sptime}
-      let aer = rec.aerMin ?? (rec.sport==='aer'? rec.sptime : '');
-      let ana = rec.anaMin ?? (rec.sport==='ana'? rec.sptime : '');
-      aer = parseFloat(aer); ana = parseFloat(ana);
-      aer = Number.isNaN(aer)?0:Math.max(0,aer);
-      ana = Number.isNaN(ana)?0:Math.max(0,ana);
+      let aer = parseFloat(rec.aerMin ?? (rec.sport==='aer'? rec.sptime : ''));
+      let ana = parseFloat(rec.anaMin ?? (rec.sport==='ana'? rec.sptime : ''));
+      aer = Number.isNaN(aer)?0:aer; ana = Number.isNaN(ana)?0:ana;
       if(aer>0) aBars.push({x:d, m:aer});
       if(ana>0) nBars.push({x:d, m:ana});
       maxSport = Math.max(maxSport, aer+ana);
     }
 
-    // Weight axis: snap to 5 kg increments, integer ticks only
+    // Weight axis snap to 5kg
     let W_MIN=50, W_MAX=80;
-    if(weights.length){
-      const minW = Math.min(...weights), maxW = Math.max(...weights);
-      W_MIN = Math.floor(minW/5)*5; W_MAX = Math.ceil(maxW/5)*5;
-      if(W_MAX===W_MIN) W_MAX = W_MIN + 5; // ensure some range
-    }
+    if(weights.length){ const minW=Math.min(...weights), maxW=Math.max(...weights); W_MIN=Math.floor(minW/5)*5; W_MAX=Math.ceil(maxW/5)*5; if(W_MAX===W_MIN) W_MAX=W_MIN+5; }
 
-    // Calories axis dynamic
-    let C_MIN = 1000, C_MAX = 3500;
-    if(calPts.length){
-      const min = Math.min(...calPts.map(p=>p.y));
-      const max = Math.max(...calPts.map(p=>p.y));
-      C_MIN = Math.max(0, Math.min(1000, Math.floor((min-100)/100)*100));
-      C_MAX = Math.max(1200, Math.ceil((max+100)/100)*100);
-      if(C_MAX - C_MIN < 800) C_MAX = C_MIN + 800;
-    }
+    // Net calories axis
+    if(!isFinite(minNet)){ minNet=-500; maxNet=500; }
+    if(minNet===maxNet){ minNet-=100; maxNet+=100; }
+    const range = maxNet-minNet; const pad = range*0.1; minNet-=pad; maxNet+=pad;
+    const step = niceStep(maxNet-minNet);
+    const CN_MIN = Math.floor(minNet/step)*step, CN_MAX = Math.ceil(maxNet/step)*step;
 
-    // Sport bar scale uses total minutes per day
-    let S_MAX = 60; if(maxSport>0) S_MAX = Math.ceil(maxSport/10)*10;
+    const S_MAX = Math.max(60, Math.ceil((maxSport||60)/10)*10);
 
-    return {wPts,fPts,calPts,aBars,nBars,W_MIN,W_MAX,F_MIN,F_MAX,C_MIN,C_MAX,S_MAX};
+    return {wPts,fPts,netBars,aBars,nBars,W_MIN,W_MAX,F_MIN,F_MAX,CN_MIN,CN_MAX,S_MAX, CN_STEP:step};
   }
 
   function clearCanvas(){ ctx.clearRect(0,0,chartCanvas.width, chartCanvas.height); }
   function renderChart(year, month){
     clearCanvas();
-    const {wPts,fPts,calPts,aBars,nBars,W_MIN,W_MAX,F_MIN,F_MAX,C_MIN,C_MAX,S_MAX} = getSeries(year, month);
-    const w = chartCanvas.width, h = chartCanvas.height; const m={l:60,r:100,t:22,b:42};
+    const {wPts,fPts,netBars,aBars,nBars,W_MIN,W_MAX,F_MIN,F_MAX,CN_MIN,CN_MAX,S_MAX,CN_STEP} = getSeries(year, month);
+    const w = chartCanvas.width, h = chartCanvas.height; const m={l:60,r:110,t:22,b:44};
     const xMin=1, xMax=dayCount(year, month); const xToPx = x=> m.l + (x-xMin)*(w-m.l-m.r)/(xMax-xMin);
 
-    const sportH=70; const sportTop = h-m.b-sportH; const sportBase = h-m.b; // bottom area for sport bars
-    const yW = v => sportTop - 6 - (v-W_MIN)*(sportTop - m.t - 6)/(W_MAX-W_MIN); // weight occupies area above sport bars
-    const yF = v => sportTop - 6 - (v-F_MIN)*(sportTop - m.t - 6)/(F_MAX-F_MIN); // fat on right-inside
-    const yC = v => sportTop - 6 - (v-C_MIN)*(sportTop - m.t - 6)/(C_MAX-C_MIN); // calories on right-outside
-    const yS = v => sportBase - (v/S_MAX)*sportH; // sport minutes
+    // Sport area is conditional so calories/lines are not affected by sport toggle
+    const sportBase = h - m.b;
+    const sportH = (typeof chkSport!=="undefined" && chkSport.checked) ? 70 : 0;
+    const sportTop = sportBase - sportH;
 
-    // grid & axes
+    const yW = v => sportTop - 6 - (v-W_MIN)*(sportTop - m.t - 6)/(W_MAX-W_MIN); // weight
+    const yF = v => sportTop - 6 - (v-F_MIN)*(sportTop - m.t - 6)/(F_MAX-F_MIN); // fat
+    const yC = v => sportTop - 6 - (v-CN_MIN)*(sportTop - m.t - 6)/(CN_MAX-CN_MIN); // net calories
+    const yS = v => sportBase - (v/S_MAX)*Math.max(1, sportH); // sport minutes
+
+    // axes & grids
     ctx.strokeStyle='#2a3140'; ctx.lineWidth=1; ctx.beginPath();
-    ctx.moveTo(m.l,sportBase); ctx.lineTo(w-m.r,sportBase); // x at bottom
-    ctx.moveTo(m.l,m.t); ctx.lineTo(m.l,sportTop-6); // y left (weight)
-    ctx.moveTo(w-m.r,m.t); ctx.lineTo(w-m.r,sportTop-6); // y right inside (fat)
-    ctx.moveTo(w-(m.r-40),m.t); ctx.lineTo(w-(m.r-40),sportTop-6); // y right outside (cal)
-    ctx.moveTo(m.l,sportTop); ctx.lineTo(w-m.r,sportTop); // separator above sport bars
+    ctx.moveTo(m.l,sportBase); ctx.lineTo(w-m.r,sportBase); // x
+    ctx.moveTo(m.l,m.t); ctx.lineTo(m.l,sportTop-6); // y left weight
+    ctx.moveTo(w-m.r,m.t); ctx.lineTo(w-m.r,sportTop-6); // y right inside fat
+    ctx.moveTo(w-(m.r-45),m.t); ctx.lineTo(w-(m.r-45),sportTop-6); // y right outside calories
+    if(sportH>0){ ctx.moveTo(m.l,sportTop); ctx.lineTo(w-m.r,sportTop); } // separator above sport bars only when showing sport
     ctx.stroke();
 
-    // Weight ticks (integers only)
+    // Left ticks (weight, integers)
     ctx.fillStyle='#9aa3ab'; ctx.font='12px system-ui, Segoe UI, Roboto, Arial';
     for(let tick=W_MIN; tick<=W_MAX; tick+=1){ const yp=yW(tick); if(tick%5===0){ ctx.strokeStyle='#1e2430'; ctx.beginPath(); ctx.moveTo(m.l,yp); ctx.lineTo(w-m.r,yp); ctx.stroke(); } ctx.fillText(String(tick),8,yp+4); }
-
-    // Fat ticks (5%)
-    const r1 = w - m.r + 8; for(let tick=F_MIN; tick<=F_MAX; tick+=5){ const yp=yF(tick); ctx.fillText(String(tick)+'%', r1, yp+4); }
-
-    // Calories ticks (500)
-    const r2 = w - (m.r-40) + 8; for(let tick=C_MIN; tick<=C_MAX; tick+=500){ const yp=yC(tick); ctx.fillText(String(tick), r2, yp+4); }
+    // Right inside fat ticks (5%)
+    const r1 = w - m.r + 8; for(let t=F_MIN; t<=F_MAX; t+=5){ const yp=yF(t); ctx.fillText(String(t)+'%', r1, yp+4); }
+    // Right outside calories ticks
+    const r2 = w - (m.r-45) + 8; for(let t=CN_MIN; t<=CN_MAX; t+=CN_STEP){ const yp=yC(t); ctx.fillText(String(t), r2, yp+4); }
 
     // Day ticks
-    const step=Math.max(1,Math.round(xMax/6));
-    for(let d=1; d<=xMax; d+=step){ const xp=xToPx(d); ctx.strokeStyle='#1e2430'; ctx.beginPath(); ctx.moveTo(xp,sportBase); ctx.lineTo(xp,m.t); ctx.stroke(); ctx.fillText(String(d), xp-6, sportBase+12); }
+    const stepX=Math.max(1,Math.round((xMax-xMin+1)/6));
+    for(let d=1; d<=xMax; d+=stepX){ const xp=xToPx(d); ctx.strokeStyle='#1e2430'; ctx.beginPath(); ctx.moveTo(xp,sportBase); ctx.lineTo(xp,m.t); ctx.stroke(); ctx.fillText(String(d), xp-6, sportBase+12); }
+
+    // zero line for net calories
+    if(CN_MIN<0 && CN_MAX>0){ const zy=yC(0); ctx.strokeStyle='#3b4458'; ctx.beginPath(); ctx.moveTo(m.l,zy); ctx.lineTo(w-m.r,zy); ctx.stroke(); }
 
     function drawLine(pts,yMap,color){ if(!pts.length) return; ctx.strokeStyle=color; ctx.lineWidth=2; ctx.beginPath(); pts.sort((a,b)=>a.x-b.x).forEach((p,i)=>{ const xp=xToPx(p.x), yp=yMap(p.y); if(i===0) ctx.moveTo(xp,yp); else ctx.lineTo(xp,yp); }); ctx.stroke(); ctx.fillStyle=color; pts.forEach(p=>{ const xp=xToPx(p.x), yp=yMap(p.y); ctx.beginPath(); ctx.arc(xp,yp,3,0,Math.PI*2); ctx.fill(); }); }
 
-    // stacked bars for sport time (blue=aerobic, red=anaerobic)
-    function drawStackedBars(aBars, nBars){
-      const byDay = new Map();
-      aBars.forEach(b=>{ byDay.set(b.x, {...(byDay.get(b.x)||{}), aer:b.m}); });
-      nBars.forEach(b=>{ byDay.set(b.x, {...(byDay.get(b.x)||{}), ana:b.m}); });
-      const totalW = (w-m.l-m.r)/(xMax-xMin+1); const bw = Math.max(4,totalW*0.6);
-      const blue = getComputedStyle(document.documentElement).getPropertyValue('--blue').trim();
-      const red  = getComputedStyle(document.documentElement).getPropertyValue('--red').trim();
+    function drawNetBars(bars){
+      if(!bars.length) return;
+      const totalW=(w-m.l-m.r)/(xMax-xMin+1);
+      const bw=Math.max(4,totalW*0.6);
+      const col=getComputedStyle(document.documentElement).getPropertyValue('--series-cal').trim();
+      ctx.fillStyle=col;
+
+      // Bars start at the MIN weight line and grow **downwards** for positive net,
+      // upwards for negative net. This keeps calories independent from sport area.
+      const baseY = yW(W_MIN);
+      const areaH = (sportTop - m.t - 6);
+      const unitPx = areaH / (CN_MAX - CN_MIN || 1); // px per calorie unit
+
+      bars.forEach(b=>{
+        const xp=xToPx(b.x), x0=xp-bw/2;
+        const hpx = b.v * unitPx; // positive -> downward
+        const maxDown = sportBase - baseY;    // how far we can go down
+        const maxUp   = baseY - m.t;          // how far we can go up
+        let yStart, height;
+        if(hpx >= 0){
+          height = Math.min(hpx, Math.max(0,maxDown));
+          yStart = baseY;
+        } else {
+          height = Math.min(-hpx, Math.max(0,maxUp));
+          yStart = baseY - height;
+        }
+        if(height>0) ctx.fillRect(x0, yStart, bw, height);
+      });
+    }
+
+    function drawSportBars(aBars,nBars){
+      const byDay=new Map();
+      aBars.forEach(b=>{ byDay.set(b.x,{...(byDay.get(b.x)||{}),aer:b.m}); });
+      nBars.forEach(b=>{ byDay.set(b.x,{...(byDay.get(b.x)||{}),ana:b.m}); });
+      const totalW=(w-m.l-m.r)/(xMax-xMin+1);
+      const bw=Math.max(4,totalW*0.6);
+      const blue=getComputedStyle(document.documentElement).getPropertyValue('--blue').trim();
+      const red=getComputedStyle(document.documentElement).getPropertyValue('--red').trim();
       byDay.forEach((v,day)=>{
-        const xp=xToPx(day); const x0=xp-bw/2; const aer=v.aer||0, ana=v.ana||0; if(aer===0 && ana===0) return;
-        const yAerTop = yS(aer); ctx.fillStyle=blue; ctx.fillRect(x0, yAerTop, bw, sportBase - yAerTop);
-        const yAnaTop = yS(aer+ana); ctx.fillStyle=red;  ctx.fillRect(x0, yAnaTop, bw, yAerTop - yAnaTop);
+        const xp=xToPx(day), x0=xp-bw/2;
+        const aer=v.aer||0, ana=v.ana||0;
+        if(aer===0 && ana===0) return;
+        const yAerTop=yS(aer);
+        ctx.fillStyle=blue; ctx.fillRect(x0, yAerTop, bw, sportBase - yAerTop);
+        const yAnaTop=yS(aer+ana);
+        ctx.fillStyle=red;  ctx.fillRect(x0, yAnaTop, bw, yAerTop - yAnaTop);
       });
     }
 
     const cs=getComputedStyle(document.documentElement);
     if(chkWeight.checked)   drawLine(wPts, yW, cs.getPropertyValue('--series-weight').trim());
     if(chkFat.checked)      drawLine(fPts, yF, cs.getPropertyValue('--series-fat').trim());
-    if(chkCalories.checked) drawLine(calPts, yC, cs.getPropertyValue('--series-cal').trim());
-    if(chkSport.checked)    drawStackedBars(aBars, nBars);
+    if(chkCalories.checked) drawNetBars(netBars);
+    if(chkSport.checked && sportH>0) drawSportBars(aBars, nBars);
 
-    // labels
+    // title & info
     ctx.fillStyle='#eaf1f6'; ctx.font='14px system-ui, Segoe UI, Roboto, Arial';
     const monthName = new Date(year, month, 1).toLocaleString(undefined,{month:'long', year:'numeric'});
-    ctx.fillText(`Weight & Health – ${monthName}`, m.l, m.t-6+12);
+    ctx.fillText(`${I18N[CUR_LANG].title} – ${monthName}`, m.l, m.t-6+12);
     ctx.fillStyle='#9aa3ab'; ctx.font='12px system-ui, Segoe UI, Roboto, Arial';
-    ctx.fillText('Sport time (min)', m.l+4, sportTop+12);
+    ctx.fillText(I18N[CUR_LANG].chartInfo, m.l, m.t+12);
   }
 
-  // ====== NAV ======
+  // ====== IMPORT / EXPORT ======
+  function exportMonth(year, month){
+    const s=readStore(); const mk=ymKey(year,month);
+    const blob=new Blob([JSON.stringify({[mk]: s[mk]||{}}, null, 2)], {type:'application/json'});
+    const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`health-tracker_${mk}.json`; a.click(); URL.revokeObjectURL(url);
+  }
+
+  function isMonthKey(k){ return /^\d{4}-(0[1-9]|1[0-2])$/.test(k); }
+
+  function importJsonText(text){
+    let obj; try{ obj=JSON.parse(text); }catch(e){ throw new Error('JSON parse error'); }
+    let monthsObj=obj;
+    if(!Object.keys(monthsObj).some(isMonthKey) && obj.data) monthsObj=obj.data;
+    const s=readStore(); let dayCount=0, monthCount=0;
+    for(const mk of Object.keys(monthsObj)){
+      if(!isMonthKey(mk)) continue;
+      const monthMap = monthsObj[mk]; if(!monthMap || typeof monthMap!== 'object') continue;
+      s[mk] = s[mk] || {};
+      for(const d of Object.keys(monthMap)){
+        if(!/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(d)) continue;
+        const rec = monthMap[d] || {};
+        const normalized = {
+          weight: rec.weight ?? '',
+          fat: rec.fat ?? '',
+          calIn: rec.calIn ?? rec.cal ?? '',
+          calOut: rec.calOut ?? '',
+          aerMin: rec.aerMin ?? (rec.sport==='aer'? rec.sptime : '') ?? '',
+          anaMin: rec.anaMin ?? (rec.sport==='ana'? rec.sptime : '') ?? ''
+        };
+        s[mk][d] = normalized; dayCount++;
+      }
+      monthCount++;
+    }
+    writeStore(s);
+    const {year,month}=getPickerYM();
+    renderCalendar(year,month); if(isChartActive()) renderChart(year,month);
+    return {monthCount, dayCount};
+  }
+
+  // ====== NAV & STATE ======
   function getPickerYM(){ const [y,m] = monthPicker.value.split('-').map(Number); return {year:y, month:m-1}; }
   function isChartActive(){ return chartWrap.style.display !== 'none'; }
   function activateCalendar(){ tabCalendar.classList.add('active'); tabChart.classList.remove('active'); calendarWrap.style.display='block'; chartWrap.style.display='none'; }
@@ -338,41 +465,70 @@
   todayBtn.addEventListener('click', ()=>{ const now=new Date(); renderCalendar(now.getFullYear(), now.getMonth()); if(isChartActive()) renderChart(now.getFullYear(), now.getMonth()); });
   monthPicker.addEventListener('change', ()=>{ const {year,month}=getPickerYM(); renderCalendar(year,month); if(isChartActive()) renderChart(year,month); });
   exportBtn.addEventListener('click', ()=>{ const {year,month}=getPickerYM(); exportMonth(year,month); });
+  importBtn.addEventListener('click', ()=> importFile.click());
+  importFile.addEventListener('change', async ()=>{
+    const f = importFile.files[0]; if(!f) return; try{
+      const text = await f.text(); const {monthCount, dayCount} = importJsonText(text);
+      alert(I18N[CUR_LANG].importOk(monthCount, dayCount));
+    }catch(err){ alert(I18N[CUR_LANG].importFail(err.message||String(err))); }
+    finally{ importFile.value=''; }
+  });
   tabCalendar.addEventListener('click', activateCalendar); tabChart.addEventListener('click', activateChart);
+
   ;[chkWeight,chkFat,chkCalories,chkSport].forEach(el=> el.addEventListener('change', ()=>{ if(isChartActive()){ const {year,month}=getPickerYM(); renderChart(year,month); } }));
   window.addEventListener('wm:changed', ()=>{ if(isChartActive()){ const {year,month}=getPickerYM(); renderChart(year,month); } });
+
+  // ====== Language apply ======
+  function applyLang(){
+    const L=I18N[CUR_LANG];
+    titleEl.textContent=L.title;
+    document.getElementById('tabCalendar').textContent=L.calendar;
+    document.getElementById('tabChart').textContent=L.chart;
+    todayBtn.textContent=L.today; exportBtn.textContent=L.export; document.getElementById('importBtn').textContent=L.import; autosaveLabel.textContent=L.autosave; document.getElementById('langLabel').textContent=L.lang; noteText.textContent=L.note;
+    lblWeight.textContent=L.toggles.weight; lblFat.textContent=L.toggles.fat; lblCalories.textContent=L.toggles.cal; lblSport.textContent=L.toggles.sport;
+    renderDOW();
+    const {year,month}=getPickerYM();
+    renderCalendar(year,month);
+    if(isChartActive()) renderChart(year,month);
+  }
+  langSel.value=CUR_LANG; langSel.addEventListener('change', ()=>{ CUR_LANG=langSel.value; localStorage.setItem('wm_lang',CUR_LANG); applyLang(); });
 
   // ====== INIT ======
   const now = new Date();
   monthPicker.value = `${now.getFullYear()}-${pad2(now.getMonth()+1)}`;
+  renderDOW();
   renderCalendar(now.getFullYear(), now.getMonth());
+  applyLang();
   activateCalendar();
 
-  // ====== EXPORT ======
-  function exportMonth(year, month){ const s=readStore(); const mk=ymKey(year,month); const blob=new Blob([JSON.stringify({[mk]: s[mk]||{}}, null, 2)], {type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`health-tracker_${mk}.json`; a.click(); URL.revokeObjectURL(url); }
-
   // ====== PUBLIC API & TESTS ======
-  window.WMTracker = { readStore, writeStore, getMonthData, setDayData, getSeries };
+  window.WMTracker = { readStore, writeStore, getMonthData, setDayData, getSeries, importJsonText };
 
-  // --- Basic tests (console) ---
+  // --- Basic & Additional tests (console) ---
   (function runTests(){
-    const results = [];
-    const assert = (name, cond) => results.push({name, pass: !!cond});
+    const results = []; const assert=(n,c)=>results.push({name:n,pass:!!c});
+    const now2=new Date(); const y=now2.getFullYear(), m=now2.getMonth();
+    const d1=`${y}-${(m+1).toString().padStart(2,'0')}-01`, d2=`${y}-${(m+1).toString().padStart(2,'0')}-02`, d3=`${y}-${(m+1).toString().padStart(2,'0')}-03`, d4=`${y}-${(m+1).toString().padStart(2,'0')}-04`, d5=`${y}-${(m+1).toString().padStart(2,'0')}-05`;
+    setDayData(d1,{weight:'51.5',fat:'20',calIn:'2200',calOut:'300',aerMin:'30'});
+    setDayData(d2,{weight:'58.2',fat:'21',calIn:'1800',calOut:'500',anaMin:'25'});
+    setDayData(d3,{weight:'55.0',fat:'22',calIn:'2000',calOut:'700',aerMin:'10',anaMin:'15'}); // both sports same day
+    setDayData(d4,{weight:'54.0',fat:'21.5',calIn:'500',calOut:'800'}); // negative net calories day
+    let s=getSeries(y,m);
+    assert('weight snap min 50', s.W_MIN===50);
+    assert('weight snap max 60', s.W_MAX===60);
+    assert('has net calorie bars', s.netBars.length>=3);
+    assert('sport bars split a/na', s.aBars.length>=1 && s.nBars.length>=1);
+    const d3Net = s.netBars.find(b=>b.x===3)?.v; assert('net calories computed (positive)', d3Net===1300);
+    const d4Net = s.netBars.find(b=>b.x===4)?.v; assert('net calories computed (negative)', d4Net===-300);
 
-    const now2 = new Date(); const y = now2.getFullYear(), m = now2.getMonth();
-    const d1 = `${y}-${(m+1).toString().padStart(2,'0')}-01`;
-    const d2 = `${y}-${(m+1).toString().padStart(2,'0')}-02`;
-    const d3 = `${y}-${(m+1).toString().padStart(2,'0')}-03`;
-    setDayData(d1, {weight:'51.5',fat:'20',cal:'1800',aerMin:'30'});
-    setDayData(d2, {weight:'58.2',fat:'21',cal:'1900',anaMin:'25'});
-    // back-compat old shape
-    setDayData(d3, {weight:'55',fat:'22',cal:'2000',sport:'aer',sptime:'15'});
-
-    const s = getSeries(y,m);
-    assert('weight min snapped to 50', s.W_MIN===50);
-    assert('weight max snapped to 60', s.W_MAX===60);
-    assert('aer bars exist', s.aBars.length>=1);
-    assert('ana bars exist', s.nBars.length>=1);
+    // Import tests
+    const mk = ymKey(y,m);
+    const sample = JSON.stringify({[mk]: {[d5]: {weight:'56.2', fat:'23', cal: '2100', calOut:'600', sport:'aer', sptime:'20'}}});
+    const stats = importJsonText(sample);
+    assert('import returned counts', stats && stats.monthCount>=1 && stats.dayCount>=1);
+    const after = WMTracker.readStore();
+    assert('import normalized cal->calIn', after[mk] && after[mk][d5] && after[mk][d5].calIn==='2100');
+    assert('import normalized sport legacy', after[mk] && after[mk][d5] && after[mk][d5].aerMin==='20');
 
     console.log(`Tests: ${results.filter(r=>r.pass).length}/${results.length} passed`);
     results.forEach(r=> console[r.pass?'log':'error'](`${r.pass?'✔':'✘'} ${r.name}`));
