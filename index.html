@@ -113,7 +113,7 @@
       dow: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
       ph: { kg:'kg', fat:'%', in:'kcal intake', out:'kcal burned', aer:'Aerobic (min)', ana:'Anaerobic (min)'},
       toggles: {weight:'Weight (line)', fat:'Body fat % (line)', cal:'Net calories (bars)', sport:'Sport time (bars)'},
-      chartInfo:'Left axis: Weight (auto‑snap to 5 kg, integer ticks). Right inside: Fat 10–35 %. Right outside: Net calories (auto). Bottom: Sport minutes (stacked: blue=aerobic, red=anaerobic).',
+      //chartInfo:'Left axis: Weight (auto‑snap to 5 kg, integer ticks). Right inside: Fat 10–35 %. Right outside: Net calories (auto). Bottom: Sport minutes (stacked: blue=aerobic, red=anaerobic).',
       importOk: (m,d)=>`Imported ${d} day(s) in ${m} month(s).`,
       importFail: msg=>`Import failed: ${msg}`
     },
@@ -124,7 +124,7 @@
       dow: ['日','一','二','三','四','五','六'],
       ph: { kg:'公斤', fat:'体脂%', in:'摄入(千卡)', out:'消耗(千卡)', aer:'有氧(分钟)', ana:'无氧(分钟)'},
       toggles: {weight:'体重（折线）', fat:'体脂％（折线）', cal:'净热量（柱状）', sport:'运动时长（柱状）'},
-      chartInfo:'左轴：体重（自动按 5kg 对齐，整数刻度）。右内：体脂 10–35%。右外：净热量（自动）。底部：运动分钟数（堆叠：蓝=有氧，红=无氧）。',
+      //chartInfo:'左轴：体重（自动按 5kg 对齐，整数刻度）。右内：体脂 10–35%。右外：净热量（自动）。底部：运动分钟数（堆叠：蓝=有氧，红=无氧）。',
       importOk: (m,d)=>`已导入 ${m} 个月、${d} 天的数据。`,
       importFail: msg=>`导入失败：${msg}`
     }
@@ -407,6 +407,23 @@
     if(chkCalories.checked) drawNetBars(netBars);
     if(chkSport.checked && sportH>0) drawSportBars(aBars, nBars);
 
+    // annotate highest/lowest for weight & fat (if enabled)
+    function drawTag(xp, yp, text, color){
+      ctx.font='12px system-ui, Segoe UI, Roboto, Arial';
+      const padX=6; const tw=ctx.measureText(text).width; const bwx=tw+padX*2; const bh=16;
+      let bx=xp - bwx/2; if(bx<m.l) bx=m.l; if(bx+bwx>w-m.r) bx=w-m.r-bwx;
+      let by=yp-18; if(by<m.t) by=yp+8; if(by+bh>sportTop-6) by=yp-18;
+      ctx.fillStyle='rgba(15,18,24,0.9)'; ctx.strokeStyle=color; ctx.lineWidth=1; ctx.beginPath();
+      if(ctx.roundRect){ ctx.roundRect(bx,by,bwx,bh,4); } else { ctx.rect(bx,by,bwx,bh); }
+      ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(xp, yp); ctx.lineTo(xp, by+(bh/2)); ctx.strokeStyle='rgba(80,90,110,0.8)'; ctx.stroke();
+      ctx.fillStyle='#eaf1f6'; ctx.fillText(text, bx+padX, by+bh-4);
+    }
+    function annotateExtrema(pts, yMap, fmt, color){ if(!pts.length) return; let min=pts[0], max=pts[0]; for(const p of pts){ if(p.y<min.y) min=p; if(p.y>max.y) max=p; } drawTag(xToPx(min.x),yMap(min.y),fmt(min.y),color); drawTag(xToPx(max.x),yMap(max.y),fmt(max.y),color); }
+
+    if(chkWeight.checked) annotateExtrema(wPts, yW, v=>`${v.toFixed(1)}kg`, cs.getPropertyValue('--series-weight').trim());
+    if(chkFat.checked)    annotateExtrema(fPts, yF, v=>`${v.toFixed(1)}%`,  cs.getPropertyValue('--series-fat').trim());
+
     // title & info
     ctx.fillStyle='#eaf1f6'; ctx.font='14px system-ui, Segoe UI, Roboto, Arial';
     const monthName = new Date(year, month, 1).toLocaleString(undefined,{month:'long', year:'numeric'});
@@ -532,6 +549,15 @@
 
     console.log(`Tests: ${results.filter(r=>r.pass).length}/${results.length} passed`);
     results.forEach(r=> console[r.pass?'log':'error'](`${r.pass?'✔':'✘'} ${r.name}`));
+
+    // Extra assertions for extrema correctness
+    const wMin = Math.min(...getSeries(y,m).wPts.map(p=>p.y));
+    const wMax = Math.max(...getSeries(y,m).wPts.map(p=>p.y));
+    const fMin = Math.min(...getSeries(y,m).fPts.map(p=>p.y));
+    const fMax = Math.max(...getSeries(y,m).fPts.map(p=>p.y));
+    console.log('Extrema (weight):', wMin, wMax, 'Extrema (fat):', fMin, fMax);
+    console.assert(wMin===51.5 && wMax===58.2, 'Weight extrema should be 51.5, 58.2');
+    console.assert(fMin===20   && fMax===23,   'Fat extrema should be 20, 23');
   })();
 })();
 </script>
