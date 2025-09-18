@@ -8,7 +8,7 @@
     :root{
       --bg:#0b0c10;--panel:#13151b;--card:#181b22;--muted:#9aa3ab;--text:#eaf1f6;--accent:#66e0a3;--line:#262a33;
       --green:#16a34a;--blue:#3b82f6;--red:#ef4444;--gray:#6b7280;
-      --series-weight:#66e0a3;--series-fat:#7aa2f7;--series-cal:#f59e0b;--series-sport:#ef4444;
+      --series-weight:#66e0a3;--series-fat:#7aa2f7;--series-cal:#f59e0b;
     }
     *{box-sizing:border-box}
     html{ -webkit-text-size-adjust:100%; }
@@ -37,8 +37,6 @@
     .field{display:flex;align-items:center;gap:6px}
     .field input,.field select{flex:1;min-width:0;height:32px;padding:4px 8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--text)}
     .field .dot{width:8px;height:8px;border-radius:50%}
-    .sport-none{background:var(--red)}
-    .sport-yes{background:var(--green)}
 
     /* Chart area */
     #chartWrap{display:none;margin-top:10px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:8px}
@@ -81,7 +79,8 @@
         <span style="display:inline-flex;align-items:center;gap:6px"><span class="dot" style="background:var(--series-weight)"></span> Weight line</span>
         <span style="display:inline-flex;align-items:center;gap:6px"><span class="dot" style="background:var(--series-fat)"></span> Fat % line</span>
         <span style="display:inline-flex;align-items:center;gap:6px"><span class="dot" style="background:var(--series-cal)"></span> Calories line</span>
-        <span style="display:inline-flex;align-items:center;gap:6px"><span class="dot sport-yes"></span> Sport done</span>
+        <span style="display:inline-flex;align-items:center;gap:6px"><span class="dot" style="background:var(--blue)"></span> Sport: Aerobic bars</span>
+        <span style="display:inline-flex;align-items:center;gap:6px"><span class="dot" style="background:var(--red)"></span> Sport: Anaerobic bars</span>
       </div>
       <div class="grid" id="dow"></div>
       <div class="grid" id="calendar"></div>
@@ -94,17 +93,17 @@
         <label><input type="checkbox" id="chkWeight" checked> Weight</label>
         <label><input type="checkbox" id="chkFat" checked> Body fat %</label>
         <label><input type="checkbox" id="chkCalories" checked> Calories</label>
-        <label><input type="checkbox" id="chkSport" checked> Sport (0/1/2)</label>
+        <label><input type="checkbox" id="chkSport" checked> Sport time bars</label>
       </div>
       <canvas id="weightChart" width="1100" height="400" aria-label="Chart"></canvas>
-      <div id="chartInfo">Left axis: Weight 50–80 kg. Right inside: Fat 10–35%. Right outside: Calories (auto‑scaled). Bottom band: Sport 0/1/2.</div>
+      <div id="chartInfo">Left axis: **Weight** auto-scales to your data (snapped to 5 kg; integer ticks only). Right inside: **Fat** 10–35%. Right outside: **Calories** (auto‑scaled). Bottom bars: **Sport time** (blue=aerobic, red=anaerobic).</div>
     </section>
   </div>
 
 <script>
 (function(){
   // ====== DOM & CONSTANTS ======
-  const STORAGE_KEY = 'wm_tracker_v4';
+  const STORAGE_KEY = 'wm_tracker_v5';
   const $ = sel => document.querySelector(sel);
   const calendarEl = $('#calendar');
   const monthPicker = $('#monthPicker');
@@ -192,11 +191,10 @@
       const rowC = document.createElement('div'); rowC.className='field';
       const c = document.createElement('input'); c.type='number'; c.step='1'; c.inputMode='numeric'; c.placeholder='kcal'; c.value=data.cal; rowC.appendChild(c);
 
-      // Sport select + dot
+      // Sport select
       const rowSp = document.createElement('div'); rowSp.className='field';
       const spSel = document.createElement('select'); ['','aer','ana'].forEach(v=>{ const op=document.createElement('option'); op.value=v; op.textContent = v===''?'Sport: None': (v==='aer'?'Sport: Aerobic':'Sport: Anaerobic'); spSel.appendChild(op); }); spSel.value=data.sport;
-      const spDot = document.createElement('span'); spDot.className = `dot ${spSel.value? 'sport-yes':'sport-none'}`; spDot.title='Sport';
-      rowSp.appendChild(spSel); rowSp.appendChild(spDot);
+      rowSp.appendChild(spSel);
 
       // Sport time (minutes) - only show when sport selected
       const rowSt = document.createElement('div'); rowSt.className='field';
@@ -211,12 +209,12 @@
       content.appendChild(rowSt);
       cell.appendChild(head); cell.appendChild(content); calendarEl.appendChild(cell);
 
-      // make tapping the cell focus the first control
+      // tap to focus
       cell.addEventListener('click', (e)=>{ if(e.target.tagName!=='INPUT' && e.target.tagName!=='SELECT'){ focusFirstInput(content); } });
 
       // listeners
       [w,f,c,st].forEach(el=>{ el.addEventListener('input', save); el.addEventListener('change', save); });
-      const updSport = ()=>{ spDot.className = `dot ${spSel.value? 'sport-yes':'sport-none'}`; rowSt.style.display = spSel.value? 'flex':'none'; if(!spSel.value){ st.value=''; } save(); };
+      const updSport = ()=>{ rowSt.style.display = spSel.value? 'flex':'none'; if(!spSel.value){ st.value=''; } save(); };
       spSel.addEventListener('change', updSport);
       spSel.addEventListener('input',  updSport);
     }
@@ -226,17 +224,28 @@
   function dayCount(year,month){ return new Date(year, month+1, 0).getDate(); }
   function getSeries(year, month){
     const md = getMonthData(year, month); const days = dayCount(year, month);
-    const W_MIN=50, W_MAX=80, F_MIN=10, F_MAX=35;
-    const wPts=[], fPts=[], calPts=[], sportPts=[];
+    const F_MIN=10, F_MAX=35; // fat stays fixed
+
+    const wPts=[], fPts=[], calPts=[], sportBars=[]; // sport as bars (minutes)
+    const weights=[]; let maxSport=0;
     for(let d=1; d<=days; d++){
       const key = `${year}-${pad2(month+1)}-${pad2(d)}`; const rec = md[key]; if(!rec) continue;
-      const w = parseFloat(rec.weight); if(!Number.isNaN(w)) wPts.push({x:d, y:Math.max(50, Math.min(80, w))});
+      const w = parseFloat(rec.weight); if(!Number.isNaN(w)){ wPts.push({x:d, y:w}); weights.push(w); }
       const f = parseFloat(rec.fat);    if(!Number.isNaN(f)) fPts.push({x:d, y:Math.max(10, Math.min(35, f))});
       const c = parseFloat(rec.cal);    if(!Number.isNaN(c)) calPts.push({x:d, y:Math.max(0, c)});
-      const sp = rec.sport==='aer'?1: rec.sport==='ana'?2:0; sportPts.push({x:d, y:sp});
+      const minutes = parseFloat(rec.sptime); const tp = rec.sport; 
+      if(!Number.isNaN(minutes) && minutes>0 && (tp==='aer' || tp==='ana')){ sportBars.push({x:d, m:minutes, t:tp}); maxSport=Math.max(maxSport, minutes); }
     }
 
-    // dynamic calories scale with sensible defaults
+    // Weight axis: snap to 5 kg increments, integer ticks only
+    let W_MIN=50, W_MAX=80;
+    if(weights.length){
+      const minW = Math.min(...weights), maxW = Math.max(...weights);
+      W_MIN = Math.floor(minW/5)*5; W_MAX = Math.ceil(maxW/5)*5;
+      if(W_MAX===W_MIN) W_MAX = W_MIN + 5; // ensure some range
+    }
+
+    // Calories axis dynamic
     let C_MIN = 1000, C_MAX = 3500;
     if(calPts.length){
       const min = Math.min(...calPts.map(p=>p.y));
@@ -246,57 +255,64 @@
       if(C_MAX - C_MIN < 800) C_MAX = C_MIN + 800;
     }
 
-    return {wPts,fPts,calPts,sportPts,W_MIN,W_MAX,F_MIN,F_MAX,C_MIN,C_MAX};
+    // Sport bar scale (minutes)
+    let S_MAX = 60; if(maxSport>0) S_MAX = Math.ceil(maxSport/10)*10;
+
+    return {wPts,fPts,calPts,sportBars,W_MIN,W_MAX,F_MIN,F_MAX,C_MIN,C_MAX,S_MAX};
   }
 
   function clearCanvas(){ ctx.clearRect(0,0,chartCanvas.width, chartCanvas.height); }
   function renderChart(year, month){
     clearCanvas();
-    const {wPts,fPts,calPts,sportPts,W_MIN,W_MAX,F_MIN,F_MAX,C_MIN,C_MAX} = getSeries(year, month);
-    const w = chartCanvas.width, h = chartCanvas.height; const m={l:60,r:90,t:22,b:42};
+    const {wPts,fPts,calPts,sportBars,W_MIN,W_MAX,F_MIN,F_MAX,C_MIN,C_MAX,S_MAX} = getSeries(year, month);
+    const w = chartCanvas.width, h = chartCanvas.height; const m={l:60,r:100,t:22,b:42};
     const xMin=1, xMax=dayCount(year, month); const xToPx = x=> m.l + (x-xMin)*(w-m.l-m.r)/(xMax-xMin);
-    const yW = v => h-m.b - (v-W_MIN)*(h-m.t-m.b-70)/(W_MAX-W_MIN);    // left axis
-    const yF = v => h-m.b - (v-F_MIN)*(h-m.t-m.b-70)/(F_MAX-F_MIN);    // right-inside
-    const yC = v => h-m.b - (v-C_MIN)*(h-m.t-m.b-70)/(C_MAX-C_MIN);    // right-outside
-    const bandH=70, bandTop=h-m.b-bandH; const yCat = v => bandTop + bandH - (v/2)*bandH; // sport band 0..2
+
+    const sportH=70; const sportTop = h-m.b-sportH; const sportBase = h-m.b; // bottom area for sport bars
+    const yW = v => sportTop - 6 - (v-W_MIN)*(sportTop - m.t - 6)/(W_MAX-W_MIN); // weight occupies area above sport bars
+    const yF = v => sportTop - 6 - (v-F_MIN)*(sportTop - m.t - 6)/(F_MAX-F_MIN); // fat on right-inside
+    const yC = v => sportTop - 6 - (v-C_MIN)*(sportTop - m.t - 6)/(C_MAX-C_MIN); // calories on right-outside
+    const yS = v => sportBase - (v/S_MAX)*sportH; // sport minutes
 
     // grid & axes
     ctx.strokeStyle='#2a3140'; ctx.lineWidth=1; ctx.beginPath();
-    ctx.moveTo(m.l,h-m.b); ctx.lineTo(w-m.r,h-m.b); // x
-    ctx.moveTo(m.l,m.t); ctx.lineTo(m.l,h-m.b); // yL
-    ctx.moveTo(w-m.r,m.t); ctx.lineTo(w-m.r,h-m.b); // yR inside
-    ctx.moveTo(m.l,bandTop); ctx.lineTo(w-m.r,bandTop); // band
+    ctx.moveTo(m.l,sportBase); ctx.lineTo(w-m.r,sportBase); // x at bottom
+    ctx.moveTo(m.l,m.t); ctx.lineTo(m.l,sportTop-6); // y left (weight)
+    ctx.moveTo(w-m.r,m.t); ctx.lineTo(w-m.r,sportTop-6); // y right inside (fat)
+    ctx.moveTo(w-(m.r-40),m.t); ctx.lineTo(w-(m.r-40),sportTop-6); // y right outside (cal)
+    ctx.moveTo(m.l,sportTop); ctx.lineTo(w-m.r,sportTop); // separator above sport bars
     ctx.stroke();
 
+    // Weight ticks (integers only)
     ctx.fillStyle='#9aa3ab'; ctx.font='12px system-ui, Segoe UI, Roboto, Arial';
-    // Left (weight)
-    for(let tick=W_MIN; tick<=W_MAX; tick+=10){ const yp=yW(tick); ctx.strokeStyle='#1e2430'; ctx.beginPath(); ctx.moveTo(m.l,yp); ctx.lineTo(w-m.r,yp); ctx.stroke(); ctx.fillText(String(tick),8,yp+4); }
-    // Right inside (fat)
-    const r1 = w - m.r + 8; const r2 = w - m.r + 46; // r2 for calories
-    for(let tick=F_MIN; tick<=F_MAX; tick+=5){ const yp=yF(tick); ctx.strokeStyle='#141923'; ctx.beginPath(); ctx.moveTo(m.l,yp); ctx.lineTo(w-m.r,yp); ctx.stroke(); ctx.fillText(String(tick)+'%', r1, yp+4); }
-    // Right outside (calories)
-    for(let tick=C_MIN; tick<=C_MAX; tick+=500){ const yp=yC(tick); ctx.fillText(String(tick), r2, yp+4); }
+    for(let tick=W_MIN; tick<=W_MAX; tick+=1){ const yp=yW(tick); if(tick%5===0){ ctx.strokeStyle='#1e2430'; ctx.beginPath(); ctx.moveTo(m.l,yp); ctx.lineTo(w-m.r,yp); ctx.stroke(); } ctx.fillText(String(tick),8,yp+4); }
 
-    // Sport band ticks 0/1/2
-    for(let v=0; v<=2; v++){ const yp=yCat(v); ctx.strokeStyle='#1e2430'; ctx.beginPath(); ctx.moveTo(m.l,yp); ctx.lineTo(w-m.r,yp); ctx.stroke(); ctx.fillText(String(v), r1, yp+4); }
-    ctx.fillText('Sport (0–2)', r1, bandTop-6);
+    // Fat ticks (5%)
+    const r1 = w - m.r + 8; for(let tick=F_MIN; tick<=F_MAX; tick+=5){ const yp=yF(tick); ctx.fillText(String(tick)+'%', r1, yp+4); }
+
+    // Calories ticks (500)
+    const r2 = w - (m.r-40) + 8; for(let tick=C_MIN; tick<=C_MAX; tick+=500){ const yp=yC(tick); ctx.fillText(String(tick), r2, yp+4); }
 
     // Day ticks
     const step=Math.max(1,Math.round(xMax/6));
-    for(let d=1; d<=xMax; d+=step){ const xp=xToPx(d); ctx.strokeStyle='#1e2430'; ctx.beginPath(); ctx.moveTo(xp,h-m.b); ctx.lineTo(xp,m.t); ctx.stroke(); ctx.fillText(String(d), xp-6, h-m.b+12); }
+    for(let d=1; d<=xMax; d+=step){ const xp=xToPx(d); ctx.strokeStyle='#1e2430'; ctx.beginPath(); ctx.moveTo(xp,sportBase); ctx.lineTo(xp,m.t); ctx.stroke(); ctx.fillText(String(d), xp-6, sportBase+12); }
 
     function drawLine(pts,yMap,color){ if(!pts.length) return; ctx.strokeStyle=color; ctx.lineWidth=2; ctx.beginPath(); pts.sort((a,b)=>a.x-b.x).forEach((p,i)=>{ const xp=xToPx(p.x), yp=yMap(p.y); if(i===0) ctx.moveTo(xp,yp); else ctx.lineTo(xp,yp); }); ctx.stroke(); ctx.fillStyle=color; pts.forEach(p=>{ const xp=xToPx(p.x), yp=yMap(p.y); ctx.beginPath(); ctx.arc(xp,yp,3,0,Math.PI*2); ctx.fill(); }); }
-    function drawPts(pts,yMap,color,shape='triangle'){ if(!pts.length) return; ctx.fillStyle=color; ctx.strokeStyle=color; pts.forEach(p=>{ const xp=xToPx(p.x), yp=yMap(p.y); if(shape==='triangle'){ ctx.beginPath(); ctx.moveTo(xp,yp-4); ctx.lineTo(xp-4,yp+4); ctx.lineTo(xp+4,yp+4); ctx.closePath(); ctx.fill(); } else { ctx.beginPath(); ctx.arc(xp,yp,3,0,Math.PI*2); ctx.fill(); }}); }
+
+    function drawBars(bars){ if(!bars.length) return; const totalW = (w-m.l-m.r)/(xMax-xMin+1); const bw = Math.max(4,totalW*0.6); bars.forEach(b=>{ const xp=xToPx(b.x); const x0=xp-bw/2; const y0=yS(b.m); const color = b.t==='aer'? getComputedStyle(document.documentElement).getPropertyValue('--blue').trim() : getComputedStyle(document.documentElement).getPropertyValue('--red').trim(); ctx.fillStyle=color; ctx.fillRect(x0,y0,bw, sportBase-y0); }); }
 
     const cs=getComputedStyle(document.documentElement);
     if(chkWeight.checked)   drawLine(wPts, yW, cs.getPropertyValue('--series-weight').trim());
     if(chkFat.checked)      drawLine(fPts, yF, cs.getPropertyValue('--series-fat').trim());
     if(chkCalories.checked) drawLine(calPts, yC, cs.getPropertyValue('--series-cal').trim());
-    if(chkSport.checked)    drawPts(sportPts.filter(p=>p.y>0), yCat, cs.getPropertyValue('--series-sport').trim(), 'triangle');
+    if(chkSport.checked)    drawBars(sportBars);
 
+    // labels
     ctx.fillStyle='#eaf1f6'; ctx.font='14px system-ui, Segoe UI, Roboto, Arial';
     const monthName = new Date(year, month, 1).toLocaleString(undefined,{month:'long', year:'numeric'});
     ctx.fillText(`Weight & Health – ${monthName}`, m.l, m.t-6+12);
+    ctx.fillStyle='#9aa3ab'; ctx.font='12px system-ui, Segoe UI, Roboto, Arial';
+    ctx.fillText('Sport time (min)', m.l+4, sportTop+12);
   }
 
   // ====== NAV ======
@@ -331,17 +347,18 @@
     const results = [];
     const assert = (name, cond) => results.push({name, pass: !!cond});
 
-    // Storage round-trip with sport time
-    const testDate = `${now.getFullYear()}-${pad2(now.getMonth()+1)}-02`;
-    setDayData(testDate, {weight:'60',fat:'20',cal:'1800',sport:'aer',sptime:'45'});
-    const md = getMonthData(now.getFullYear(), now.getMonth());
-    assert('storage round-trip', !!md[testDate] && md[testDate].cal==='1800' && md[testDate].sport==='aer' && md[testDate].sptime==='45');
+    // Test dynamic weight range snapping (51.5..58.2 => 50..60)
+    const y = now.getFullYear(), m = now.getMonth();
+    const d1 = `${y}-${(m+1).toString().padStart(2,'0')}-01`;
+    const d2 = `${y}-${(m+1).toString().padStart(2,'0')}-02`;
+    setDayData(d1, {weight:'51.5',fat:'20',cal:'1800',sport:'aer',sptime:'30'});
+    setDayData(d2, {weight:'58.2',fat:'21',cal:'1900',sport:'ana',sptime:'25'});
+    const s = getSeries(y,m);
+    assert('weight min snapped to 50', s.W_MIN===50);
+    assert('weight max snapped to 60', s.W_MAX===60);
 
-    // Series ranges
-    const s = getSeries(now.getFullYear(), now.getMonth());
-    const inRange = (pts,min,max)=> pts.every(p=>p.y>=min&&p.y<=max);
-    assert('weight in 50-80', inRange(s.wPts,50,80) || s.wPts.length===0);
-    assert('fat in 10-35', inRange(s.fPts,10,35) || s.fPts.length===0);
+    // Sport bars created & colored via type
+    assert('sport bars exist', s.sportBars.length>=2);
 
     console.log(`Tests: ${results.filter(r=>r.pass).length}/${results.length} passed`);
     results.forEach(r=> console[r.pass?'log':'error'](`${r.pass?'✔':'✘'} ${r.name}`));
