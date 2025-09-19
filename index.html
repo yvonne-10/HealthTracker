@@ -520,16 +520,16 @@
 
   // ====== PUBLIC API & TESTS ======
   window.WMTracker = { readStore, writeStore, getMonthData, setDayData, getSeries, importJsonText };
-/*
+
   // --- Basic & Additional tests (console) ---
   (function runTests(){
     const results = []; const assert=(n,c)=>results.push({name:n,pass:!!c});
     const now2=new Date(); const y=now2.getFullYear(), m=now2.getMonth();
     const d1=`${y}-${(m+1).toString().padStart(2,'0')}-01`, d2=`${y}-${(m+1).toString().padStart(2,'0')}-02`, d3=`${y}-${(m+1).toString().padStart(2,'0')}-03`, d4=`${y}-${(m+1).toString().padStart(2,'0')}-04`, d5=`${y}-${(m+1).toString().padStart(2,'0')}-05`;
-    setDayData(d1,{weight:'51.5',fat:'20',calIn:'2200',calOut:'300',aerMin:'30'});
-    setDayData(d2,{weight:'58.2',fat:'21',calIn:'1800',calOut:'500',anaMin:'25'});
-    setDayData(d3,{weight:'55.0',fat:'22',calIn:'2000',calOut:'700',aerMin:'10',anaMin:'15'}); // both sports same day
-    setDayData(d4,{weight:'54.0',fat:'21.5',calIn:'500',calOut:'800'}); // negative net calories day
+    //setDayData(d1,{weight:'51.5',fat:'20',calIn:'2200',calOut:'300',aerMin:'30'});
+    //setDayData(d2,{weight:'58.2',fat:'21',calIn:'1800',calOut:'500',anaMin:'25'});
+    //setDayData(d3,{weight:'55.0',fat:'22',calIn:'2000',calOut:'700',aerMin:'10',anaMin:'15'}); // both sports same day
+    //setDayData(d4,{weight:'54.0',fat:'21.5',calIn:'500',calOut:'800'}); // negative net calories day
     let s=getSeries(y,m);
     assert('weight snap min 50', s.W_MIN===50);
     assert('weight snap max 60', s.W_MAX===60);
@@ -537,7 +537,7 @@
     assert('sport bars split a/na', s.aBars.length>=1 && s.nBars.length>=1);
     const d3Net = s.netBars.find(b=>b.x===3)?.v; assert('net calories computed (positive)', d3Net===1300);
     const d4Net = s.netBars.find(b=>b.x===4)?.v; assert('net calories computed (negative)', d4Net===-300);
-*/
+
     // Import tests
     const mk = ymKey(y,m);
     const sample = JSON.stringify({[mk]: {[d5]: {weight:'56.2', fat:'23', cal: '2100', calOut:'600', sport:'aer', sptime:'20'}}});
@@ -563,4 +563,5 @@
 </script>
 </body>
 </html>
+
 
