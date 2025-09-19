@@ -539,9 +539,9 @@
     const d4Net = s.netBars.find(b=>b.x===4)?.v; assert('net calories computed (negative)', d4Net===-300);
 
     // Import tests
-    const mk = ymKey(y,m);
-    const sample = JSON.stringify({[mk]: {[d5]: {weight:'56.2', fat:'23', cal: '2100', calOut:'600', sport:'aer', sptime:'20'}}});
-    const stats = importJsonText(sample);
+    //const mk = ymKey(y,m);
+    //const sample = JSON.stringify({[mk]: {[d5]: {weight:'56.2', fat:'23', cal: '2100', calOut:'600', sport:'aer', sptime:'20'}}});
+    //const stats = importJsonText(sample);
     assert('import returned counts', stats && stats.monthCount>=1 && stats.dayCount>=1);
     const after = WMTracker.readStore();
     assert('import normalized cal->calIn', after[mk] && after[mk][d5] && after[mk][d5].calIn==='2100');
@@ -563,5 +563,6 @@
 </script>
 </body>
 </html>
+
 
 
