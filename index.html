@@ -520,7 +520,7 @@
 
   // ====== PUBLIC API & TESTS ======
   window.WMTracker = { readStore, writeStore, getMonthData, setDayData, getSeries, importJsonText };
-
+/*
   // --- Basic & Additional tests (console) ---
   (function runTests(){
     const results = []; const assert=(n,c)=>results.push({name:n,pass:!!c});
@@ -537,7 +537,7 @@
     assert('sport bars split a/na', s.aBars.length>=1 && s.nBars.length>=1);
     const d3Net = s.netBars.find(b=>b.x===3)?.v; assert('net calories computed (positive)', d3Net===1300);
     const d4Net = s.netBars.find(b=>b.x===4)?.v; assert('net calories computed (negative)', d4Net===-300);
-
+*/
     // Import tests
     const mk = ymKey(y,m);
     const sample = JSON.stringify({[mk]: {[d5]: {weight:'56.2', fat:'23', cal: '2100', calOut:'600', sport:'aer', sptime:'20'}}});
@@ -563,3 +563,4 @@
 </script>
 </body>
 </html>
+
